@@ -7,7 +7,7 @@ Hover to reveal the image underneath. (modeled after the [Google Creative Fellow
 
 
 ### Preview
-<img width="2020" height="1218" alt="reveal" src="https://github.com/user-attachments/assets/68da613c-2134-42c6-b2a0-a56e701ecc40" />
+<img width="2020" height="1218" alt="reveal" src="https://github.com/user-attachments/assets/7020be3f-7ff5-412c-811d-83d95823b736" />
 
 https://github.com/user-attachments/assets/c71bb605-17b9-447d-b8a4-33e891e0d29e
 
