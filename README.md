@@ -6,5 +6,5 @@ Hover to reveal the image underneath. (modeled after the [Google Creative Fellow
 
 
 ### Preview
-https://github.com/user-attachments/assets/5fd136a3-fb23-499e-817b-c595c038d7af
+https://github.com/user-attachments/assets/c71bb605-17b9-447d-b8a4-33e891e0d29e
 
