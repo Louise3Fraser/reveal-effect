@@ -15,7 +15,7 @@ html {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background-color: #eeeeee;
+  background-color: #eae7dd;
   font-family: Arial, sans-serif;
 }
 
@@ -44,4 +44,8 @@ html {
   line-height: 1;
   z-index: 20;
   padding: 20px;
+}
+
+.white {
+  color: #ffffff;
 }
