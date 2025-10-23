@@ -1,12 +1,10 @@
 # Reveal effect
 
-Hover to reveal the image underneath. (modeled after the Google Creative Fellowship site: https://creativefellowship.google/)
+Hover to reveal the image underneath. (modeled after the [Google Creative Fellowship site](https://creativefellowship.google/))
 
-->Experimenting with event listeners, canvas 2D rendering, etc.
+-> Experimenting with event listeners, canvas 2D rendering, etc.
 
 
-### preview:
-<video autoplay loop playsinline
-src="https://github.com/user-attachments/assets/e8333210-90f6-428a-86d7-57df76252233" width="600" controls></video>
-
+### Preview
+https://github.com/user-attachments/assets/5fd136a3-fb23-499e-817b-c595c038d7af
 
