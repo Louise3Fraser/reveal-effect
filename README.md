@@ -3,6 +3,7 @@
 Hover to reveal the image underneath. (modeled after the [Google Creative Fellowship site](https://creativefellowship.google/))
 
 -> Experimenting with event listeners, canvas 2D rendering, etc.
+-> basic html, js, +css
 
 
 ### Preview
