@@ -2,10 +2,18 @@
 
 ## [Try it out](https://reveal-effect-eight.vercel.app/)
 
-Draw reveal the image underneath. (modeled after the [Google Creative Fellowship site](https://creativefellowship.google/))
+Draw to reveal the image underneath. (modeled after the [Google Creative Fellowship site](https://creativefellowship.google/))
 
--> Experimenting with event listeners, canvas 2D rendering, etc.
--> basic html, js, +css
+* Experimenting with event listeners, canvas 2D rendering, etc.
+* basic html, js, css
+
+### How to use
+* Press down to draw + reveal
+* Settings:
+  - *Color*: original canvas color
+  - *Image*: image to be revealed
+  - *Radius*: the size of the brush stroke
+  - *Size*: smoothness
 
 ### Preview
 
