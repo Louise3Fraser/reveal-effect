@@ -8,17 +8,77 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400..800;1,400..800&family=Fira+Mono:wght@400;500;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400..800;1,400..800&family=Fira+Mono:wght@400;500;700&family=IBM+Plex+Sans:ital,wght@0,100..700;1,100..700&display=swap"
       rel="stylesheet"
     />
   </head>
   <body>
+    <div class="panel controls" id="controls">
+      <button class="panel-head" id="panelToggle" aria-expanded="true">
+        <span>Settings</span>
+        <svg
+          class="chev"
+          viewBox="0 0 24 24"
+          width="20"
+          height="20"
+          aria-hidden="true"
+        >
+          <path
+            d="M6 9l6 6 6-6"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+          />
+        </svg>
+      </button>
+
+      <div class="panel-body" id="panelBody">
+        <hr class="panel-divider" />
+
+        <div class="preset-row">
+          <label>Presets</label>
+          <div class="presets" id="presets">
+            <button class="preset selected" data-src="./assets/bg-4.jpg">
+              <img src="./assets/bg-4.jpg" alt="Preset 1" />
+            </button>
+            <button class="preset" data-src="./assets/bg-2.jpg">
+              <img src="./assets/bg-2.jpg" alt="Preset 2" />
+            </button>
+            <button class="preset" data-src="./assets/bg-8.jpg">
+              <img src="./assets/bg-8.jpg" alt="Preset 3" />
+            </button>
+          </div>
+        </div>
+
+        <div class="field row height">
+          <label for="bgColor">Color</label>
+          <input id="bgColor" type="color" value="#f8f9fa" />
+        </div>
+
+        <div class="field row height">
+          <label for="imageInput">Image</label>
+          <label class="file-btn">
+            <input id="imageInput" type="file" accept="image/*" hidden />
+            <img id="imagePreview" src="./assets/bg-1.jpg" alt="Preview" />
+          </label>
+        </div>
+
+        <div class="field height">
+          <label for="radius">Radius</label>
+          <input id="radius" type="range" min="10" max="200" step="1" />
+        </div>
+
+        <div class="field height">
+          <label for="pixelSize">Size</label>
+          <input id="pixelSize" type="range" min="2" max="60" step="1" />
+        </div>
+
+        <button class="reset-btn" id="resetImage" type="button">Reset</button>
+      </div>
+    </div>
     <div class="container">
       <canvas id="pixelCanvas"></canvas>
-      <h1 class="title">
-        peek beneath the
-        <span class="title-italic">pixels ݁₊ ⊹ . ݁ ⟡ ݁ . ⊹ ₊ ݁.</span>
-      </h1>
     </div>
 
     <script src="script.js"></script>
