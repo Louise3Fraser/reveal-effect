@@ -12,7 +12,7 @@ const config = {
   image: document.body.dataset.image || "./assets/bg-4.jpg",
   pixelSize: getDatasetNumber("pixelsize", "pixelSize", 20),
   revealRadius: getDatasetNumber("radius", null, 50),
-  bgColor: document.body.dataset.bg || "#ffffffff",
+  bgColor: document.body.dataset.bg || "#ffffff",
 };
 
 let mousePos = { x: -1000, y: -1000 };
