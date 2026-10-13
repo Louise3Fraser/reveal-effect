@@ -14,7 +14,7 @@ function getDatasetNumber(primary, fallback, def) {
 }
 
 const config = {
-  image: document.body.dataset.image || "./assets/petal.jpg",
+  image: document.body.dataset.image || "./assets/glow.jpg",
   pixelSize: getDatasetNumber("pixelsize", "pixelSize", 20),
   revealRadius: getDatasetNumber("radius", null, 50),
   bgColor: document.body.dataset.bg || "#ffffff",
