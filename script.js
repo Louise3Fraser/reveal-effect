@@ -2,6 +2,11 @@
 const canvas = document.getElementById("pixelCanvas");
 const ctx = canvas.getContext("2d");
 
+// Offscreen copy of the image, pre-scaled to the canvas, so reveals are a
+// cheap 1:1 copy instead of rescaling the full-size photo.
+const layer = document.createElement("canvas");
+const layerCtx = layer.getContext("2d");
+
 function getDatasetNumber(primary, fallback, def) {
   const val = document.body.dataset[primary] ?? document.body.dataset[fallback];
   const n = parseInt(val ?? def, 10);
@@ -9,352 +14,468 @@ function getDatasetNumber(primary, fallback, def) {
 }
 
 const config = {
-  image: document.body.dataset.image || "./assets/bg-4.jpg",
+  image: document.body.dataset.image || "./assets/glow.jpg",
   pixelSize: getDatasetNumber("pixelsize", "pixelSize", 20),
   revealRadius: getDatasetNumber("radius", null, 50),
   bgColor: document.body.dataset.bg || "#ffffff",
 };
 
-let mousePos = { x: -1000, y: -1000 };
-let pixels = [];
-let isPressed = false;
-
 let width = window.innerWidth;
 let height = window.innerHeight;
+let dpr = 1;
+
+const ANIM_MS = 240;
+
+const settings = {
+  mode: "draw", // draw | hover | erase
+  shape: "square", // square | dot
+  animate: true,
+  fadeMs: 0, // 0 = revealed cells stay revealed
+};
+
+let img = null;
+let cols = 0;
+let rows = 0;
+let state = new Uint8Array(0); // 1 = revealed (target state)
+let changedAt = new Float64Array(0); // when each cell last flipped
+let animating = new Set();
+let fadeQueue = []; // [index, revealedAt, index, revealedAt, ...] in time order
+let fadeHead = 0;
+let fadeTimer = 0;
+
+let isPressed = false;
+let lastPoint = null;
+let pendingPoints = [];
+let fullRedraw = true;
+let frameQueued = false;
 
 function resizeCanvas() {
-  const dpr = Math.max(1, window.devicePixelRatio || 1);
+  width = window.innerWidth;
+  height = window.innerHeight;
+  dpr = Math.max(1, window.devicePixelRatio || 1);
   canvas.style.width = width + "px";
   canvas.style.height = height + "px";
-  canvas.width = Math.floor(width * dpr);
-  canvas.height = Math.floor(height * dpr);
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  canvas.width = layer.width = Math.round(width * dpr);
+  canvas.height = layer.height = Math.round(height * dpr);
+  drawLayer();
 }
-resizeCanvas();
 
-const img = new Image();
-img.src = config.image;
+// Draw the image with "cover" fit so it fills the screen without stretching.
+function drawLayer() {
+  layerCtx.clearRect(0, 0, layer.width, layer.height);
+  if (!img) return;
+  const scale = Math.max(
+    layer.width / img.naturalWidth,
+    layer.height / img.naturalHeight
+  );
+  const w = img.naturalWidth * scale;
+  const h = img.naturalHeight * scale;
+  layerCtx.imageSmoothingQuality = "high";
+  layerCtx.drawImage(img, (layer.width - w) / 2, (layer.height - h) / 2, w, h);
+}
 
 // GRID
 function initPixels() {
-  pixels = [];
-  const cols = Math.ceil(width / config.pixelSize);
-  const rows = Math.ceil(height / config.pixelSize);
-  for (let y = 0; y < rows; y++) {
-    for (let x = 0; x < cols; x++) {
-      pixels.push({ x, y, revealed: false, revealProgress: 0 });
+  cols = Math.ceil(width / config.pixelSize);
+  rows = Math.ceil(height / config.pixelSize);
+  state = new Uint8Array(cols * rows);
+  changedAt = new Float64Array(cols * rows);
+  animating.clear();
+  fadeQueue = [];
+  fadeHead = 0;
+  pendingPoints = [];
+  requestRender(true);
+}
+
+function setCell(i, value, now) {
+  if (state[i] === value) return;
+  state[i] = value;
+  changedAt[i] = now;
+  animating.add(i);
+  if (value && settings.fadeMs > 0) fadeQueue.push(i, now);
+}
+
+function revealAll(value) {
+  const now = performance.now();
+  state.fill(value);
+  changedAt.fill(now);
+  animating.clear();
+  fadeQueue = [];
+  fadeHead = 0;
+  if (value) enqueueRevealed(now);
+  requestRender(true);
+}
+
+function enqueueRevealed(now) {
+  if (settings.fadeMs <= 0) return;
+  for (let i = 0; i < state.length; i++) if (state[i]) fadeQueue.push(i, now);
+}
+
+// Cell edges in device pixels, rounded so neighbouring cells meet without seams.
+function cellBox(i) {
+  const s = config.pixelSize * dpr;
+  const cx = i % cols;
+  const cy = (i / cols) | 0;
+  const x = Math.round(cx * s);
+  const y = Math.round(cy * s);
+  return { x, y, w: Math.round((cx + 1) * s) - x, h: Math.round((cy + 1) * s) - y };
+}
+
+// The visible part of a cell, `p` from 0 (covered) to 1 (fully open).
+function addShape(path, i, p) {
+  if (p <= 0) return;
+  const { x, y, w, h } = cellBox(i);
+  if (settings.shape === "dot") {
+    const r = (Math.min(w, h) / 2) * p;
+    path.moveTo(x + w / 2 + r, y + h / 2);
+    path.arc(x + w / 2, y + h / 2, r, 0, Math.PI * 2);
+  } else if (p >= 1) {
+    path.rect(x, y, w, h);
+  } else {
+    path.rect(x + (w * (1 - p)) / 2, y + (h * (1 - p)) / 2, w * p, h * p);
+  }
+}
+
+function stamp(x, y, now) {
+  const size = config.pixelSize;
+  const r = config.revealRadius;
+  const r2 = r * r;
+  const value = settings.mode === "erase" ? 0 : 1;
+  const minX = Math.max(0, Math.floor((x - r) / size));
+  const maxX = Math.min(cols - 1, Math.floor((x + r) / size));
+  const minY = Math.max(0, Math.floor((y - r) / size));
+  const maxY = Math.min(rows - 1, Math.floor((y + r) / size));
+  for (let cy = minY; cy <= maxY; cy++) {
+    const dy = (cy + 0.5) * size - y;
+    for (let cx = minX; cx <= maxX; cx++) {
+      const i = cy * cols + cx;
+      if (state[i] === value) continue;
+      const dx = (cx + 0.5) * size - x;
+      if (dx * dx + dy * dy < r2) setCell(i, value, now);
     }
   }
 }
 
-// DRAWING
-function draw() {
+// DRAWING (only while something is changing)
+function requestRender(full) {
+  if (full) fullRedraw = true;
+  if (frameQueued) return;
+  frameQueued = true;
+  requestAnimationFrame(render);
+}
+
+function render() {
+  frameQueued = false;
+  const now = performance.now();
+  const cover = new Path2D();
+  const open = new Path2D();
+
+  if (fullRedraw) {
+    fullRedraw = false;
+    ctx.fillStyle = config.bgColor;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    for (let i = 0; i < state.length; i++) {
+      if (state[i] && !animating.has(i)) addShape(open, i, 1);
+    }
+  }
+
+  for (const p of pendingPoints) stamp(p.x, p.y, now);
+  pendingPoints = [];
+
+  // Cover back up cells whose fade time has passed (queue is in time order).
+  if (settings.fadeMs > 0) {
+    while (fadeHead < fadeQueue.length && fadeQueue[fadeHead + 1] + settings.fadeMs <= now) {
+      const i = fadeQueue[fadeHead];
+      if (state[i] && changedAt[i] === fadeQueue[fadeHead + 1]) setCell(i, 0, now);
+      fadeHead += 2;
+    }
+    if (fadeHead > 8192) {
+      fadeQueue = fadeQueue.slice(fadeHead);
+      fadeHead = 0;
+    }
+  }
+
+  for (const i of animating) {
+    const t = settings.animate ? Math.min(1, (now - changedAt[i]) / ANIM_MS) : 1;
+    const eased = 1 - Math.pow(1 - t, 3);
+    const { x, y, w, h } = cellBox(i);
+    cover.rect(x, y, w, h);
+    addShape(open, i, state[i] ? eased : 1 - eased);
+    if (t >= 1) animating.delete(i);
+  }
+
   ctx.fillStyle = config.bgColor;
-  ctx.fillRect(0, 0, width, height);
-
-  if (img.complete) {
-    ctx.drawImage(img, 0, 0, width, height);
+  ctx.fill(cover);
+  if (img) {
+    ctx.save();
+    ctx.clip(open);
+    ctx.drawImage(layer, 0, 0);
+    ctx.restore();
   }
 
-  for (let pixel of pixels) {
-    const px = pixel.x * config.pixelSize;
-    const py = pixel.y * config.pixelSize;
+  if (animating.size) requestRender(false);
+  scheduleFade(now);
+}
 
-    const dx = px - mousePos.x;
-    const dy = py - mousePos.y;
-    const distance = Math.sqrt(dx * dx + dy * dy);
-    const revealRadius = config.revealRadius;
-
-    if (distance < revealRadius && !pixel.revealed) {
-      pixel.revealed = true;
-    }
-
-    if (pixel.revealed && pixel.revealProgress < 1) {
-      pixel.revealProgress = 1;
-    }
-
-    if (pixel.revealProgress === 0) {
-      ctx.fillStyle = config.bgColor;
-      ctx.fillRect(px, py, config.pixelSize, config.pixelSize);
-    } else if (pixel.revealProgress < 1) {
-      const size = config.pixelSize * (1 - pixel.revealProgress);
-      const offset = (config.pixelSize - size) / 2;
-      ctx.fillStyle = config.bgColor;
-      ctx.beginPath();
-      if (ctx.roundRect) {
-        ctx.roundRect(px + offset, py + offset, size, size, 2);
-      } else {
-        ctx.rect(px + offset, py + offset, size, size);
-      }
-      ctx.fill();
-    }
-  }
-
-  requestAnimationFrame(draw);
+function scheduleFade(now) {
+  clearTimeout(fadeTimer);
+  if (settings.fadeMs <= 0 || fadeHead >= fadeQueue.length) return;
+  const due = fadeQueue[fadeHead + 1] + settings.fadeMs - now;
+  fadeTimer = setTimeout(() => requestRender(false), Math.max(0, due));
 }
 
 // HANDLING
-function handleMouseMove(e) {
-  if (!isPressed) return;
-  mousePos = { x: e.clientX, y: e.clientY };
-}
-function handleMouseDown(e) {
-  isPressed = true;
-  mousePos = { x: e.clientX, y: e.clientY };
-}
-function handleMouseUp() {
-  isPressed = false;
-  mousePos = { x: -1000, y: -1000 };
-}
-
-function handleTouchMove(e) {
-  if (!isPressed) return;
-  const touch = e.touches[0];
-  if (!touch) return;
-  mousePos = { x: touch.clientX, y: touch.clientY };
-  e.preventDefault();
-}
-function handleTouchStart(e) {
-  isPressed = true;
-  const touch = e.touches[0];
-  if (!touch) return;
-  mousePos = { x: touch.clientX, y: touch.clientY };
-  e.preventDefault();
-}
-function handleTouchEnd() {
-  isPressed = false;
-  mousePos = { x: -1000, y: -1000 };
+// Queue stamps along the segment from the last point so fast strokes stay solid.
+function stroke(x, y) {
+  const step = Math.max(1, Math.min(config.revealRadius, config.pixelSize) / 2);
+  if (lastPoint) {
+    const dx = x - lastPoint.x;
+    const dy = y - lastPoint.y;
+    const n = Math.floor(Math.hypot(dx, dy) / step);
+    for (let k = 1; k <= n; k++) {
+      pendingPoints.push({
+        x: lastPoint.x + (dx * k) / (n + 1),
+        y: lastPoint.y + (dy * k) / (n + 1),
+      });
+    }
+  }
+  pendingPoints.push({ x, y });
+  lastPoint = { x, y };
+  requestRender(false);
 }
 
-// RESIZING
-window.addEventListener("resize", () => {
-  width = window.innerWidth;
-  height = window.innerHeight;
-  resizeCanvas();
-  initPixels();
+canvas.addEventListener("pointerdown", (e) => {
+  if (e.button !== 0) return;
+  isPressed = true;
+  lastPoint = null;
+  canvas.setPointerCapture?.(e.pointerId);
+  stroke(e.clientX, e.clientY);
+  e.preventDefault();
 });
 
-canvas.addEventListener("mousemove", handleMouseMove);
-canvas.addEventListener("mousedown", handleMouseDown);
-canvas.addEventListener("mouseup", handleMouseUp);
-canvas.addEventListener("mouseleave", handleMouseUp);
+canvas.addEventListener("pointermove", (e) => {
+  const hovering = settings.mode === "hover" && e.pointerType === "mouse";
+  if (!isPressed && !hovering) return;
+  const events = e.getCoalescedEvents ? e.getCoalescedEvents() : [];
+  if (events.length) events.forEach((ev) => stroke(ev.clientX, ev.clientY));
+  else stroke(e.clientX, e.clientY);
+});
 
-canvas.addEventListener("touchstart", handleTouchStart, { passive: false });
-canvas.addEventListener("touchmove", handleTouchMove, { passive: false });
-canvas.addEventListener("touchend", handleTouchEnd);
-canvas.addEventListener("touchcancel", handleTouchEnd);
+function endStroke() {
+  isPressed = false;
+  lastPoint = null;
+}
+canvas.addEventListener("pointerup", endStroke);
+canvas.addEventListener("pointercancel", endStroke);
+canvas.addEventListener("lostpointercapture", endStroke);
+canvas.addEventListener("pointerleave", () => {
+  if (!isPressed) lastPoint = null;
+});
+
+// RESIZING (coalesced to once per frame)
+let resizeQueued = false;
+window.addEventListener("resize", () => {
+  if (resizeQueued) return;
+  resizeQueued = true;
+  requestAnimationFrame(() => {
+    resizeQueued = false;
+    if (window.innerWidth === width && window.innerHeight === height &&
+        (window.devicePixelRatio || 1) === dpr) return;
+    resizeCanvas();
+    initPixels();
+  });
+});
+
+// IMAGE LOADING
+// Decode off the main thread and ignore stale loads when switching quickly.
+let loadToken = 0;
+function loadImage(src, onDone) {
+  const token = ++loadToken;
+  const next = new Image();
+  next.src = src;
+  const ready = next.decode ? next.decode() : new Promise((res, rej) => {
+    next.onload = res;
+    next.onerror = rej;
+  });
+  ready
+    .then(() => {
+      if (token !== loadToken) return;
+      img = next;
+      drawLayer();
+      initPixels();
+    })
+    .catch(() => {})
+    .finally(() => onDone?.());
+}
 
 // BEGIN
-img.onload = () => {
-  initPixels();
-  draw();
-};
+resizeCanvas();
+initPixels();
+loadImage(config.image);
 
 // CONTROLS
 const radiusRange = document.getElementById("radius");
-const radiusNumber = document.getElementById("radiusNumber");
 const pixelSizeRange = document.getElementById("pixelSize");
-const pixelSizeNumber = document.getElementById("pixelSizeNumber");
 const bgColorInput = document.getElementById("bgColor");
-const bgHexInput = document.getElementById("bgHex");
 const imageInput = document.getElementById("imageInput");
 const imagePreview = document.getElementById("imagePreview");
 const resetBtn = document.getElementById("resetImage");
+const presetButtons = document.querySelectorAll(".preset");
+const fadeRange = document.getElementById("fade");
+const fadeValue = document.getElementById("fadeValue");
+const animateInput = document.getElementById("animate");
 const originalImagePath = config.image;
-
-function clamp(n, min, max) {
-  return Math.max(min, Math.min(max, n));
-}
-
-function syncControlsFromConfig() {
-  if (radiusRange) radiusRange.value = config.revealRadius;
-  if (radiusNumber) radiusNumber.value = config.revealRadius;
-
-  if (pixelSizeRange) pixelSizeRange.value = config.pixelSize;
-  if (pixelSizeNumber) pixelSizeNumber.value = config.pixelSize;
-
-  if (bgHexInput) bgHexInput.value = config.bgColor;
-  if (bgColorInput) {
-    try {
-      bgColorInput.value = config.bgColor.startsWith("#")
-        ? config.bgColor
-        : "#f8f9fa";
-    } catch {
-      bgColorInput.value = "#f8f9fa";
-    }
-  }
-}
-syncControlsFromConfig();
-
-function setRadius(value) {
-  const v = clamp(parseInt(value || "0", 10), 1, 999);
-  config.revealRadius = v;
-  if (radiusRange) radiusRange.value = v;
-  if (radiusNumber) radiusNumber.value = v;
-}
-radiusRange?.addEventListener("input", (e) => setRadius(e.target.value));
-radiusNumber?.addEventListener("input", (e) => setRadius(e.target.value));
-
-function setPixelSize(value) {
-  const v = clamp(parseInt(value || "0", 10), 2, 200);
-  if (v === config.pixelSize) return;
-  config.pixelSize = v;
-  pixelSizeRange && (pixelSizeRange.value = v);
-  pixelSizeNumber && (pixelSizeNumber.value = v);
-  initPixels();
-}
-pixelSizeRange?.addEventListener("input", (e) => setPixelSize(e.target.value));
-pixelSizeNumber?.addEventListener("input", (e) => setPixelSize(e.target.value));
-
-function setBg(color) {
-  config.bgColor = color;
-  if (
-    bgColorInput &&
-    bgColorInput.value.toLowerCase() !== color.toLowerCase()
-  ) {
-    try {
-      bgColorInput.value = color;
-    } catch {}
-  }
-  if (bgHexInput && bgHexInput.value.toLowerCase() !== color.toLowerCase()) {
-    bgHexInput.value = color;
-  }
-}
-bgColorInput?.addEventListener("input", (e) => setBg(e.target.value));
-bgHexInput?.addEventListener("input", (e) => setBg(e.target.value.trim()));
-
-const presetWrap = document.getElementById("presets");
-if (presetWrap) {
-  presetWrap.addEventListener("click", (e) => {
-    const btn = e.target.closest(".preset");
-    if (!btn) return;
-
-    const src = btn.dataset.src;
-    if (!src) return;
-
-    document
-      .querySelectorAll(".preset")
-      .forEach((p) => p.classList.remove("selected"));
-    btn.classList.add("selected");
-
-    img.onload = () => initPixels();
-    img.src = src;
-
-    if (imagePreview) imagePreview.src = src;
-  });
-}
-
-imageInput?.addEventListener("change", (e) => {
-  const file = e.target.files?.[0];
-  if (!file) return;
-  const url = URL.createObjectURL(file);
-  img.onload = () => {
-    URL.revokeObjectURL(url);
-    initPixels();
-  };
-  img.src = url;
-  if (imagePreview) imagePreview.src = url;
-  document
-    .querySelectorAll(".preset")
-    .forEach((p) => p.classList.remove("selected"));
-});
-
-resetBtn?.addEventListener("click", () => {
-  img.onload = () => initPixels();
-  img.src = originalImagePath;
-  if (imagePreview) imagePreview.src = originalImagePath;
-  document.querySelectorAll(".preset").forEach((p, i) => {
-    p.classList.toggle("selected", i === 0);
-  });
-});
+const defaults = { ...config, ...settings };
+let objectUrl = null;
 
 function setSliderFill(el) {
-  const min = +el.min || 0,
-    max = +el.max || 100,
-    val = +el.value || min;
-  const pct = ((val - min) / (max - min)) * 100;
-  el.style.setProperty("--sx", pct + "%");
+  const min = +el.min || 0;
+  const max = +el.max || 100;
+  const val = +el.value || min;
+  el.style.setProperty("--sx", ((val - min) / (max - min)) * 100 + "%");
 }
-["radius", "pixelSize"].forEach((id) => {
-  const el = document.getElementById(id);
-  if (!el) return;
-  if (id === "radius") el.value = config.revealRadius;
-  if (id === "pixelSize") el.value = config.pixelSize;
-  setSliderFill(el);
-  el.addEventListener("input", (e) => {
-    const v = parseInt(e.target.value, 10);
-    if (id === "radius") config.revealRadius = v;
-    else {
-      config.pixelSize = v;
-      initPixels();
-    }
-    setSliderFill(el);
+
+if (radiusRange) {
+  radiusRange.value = config.revealRadius;
+  setSliderFill(radiusRange);
+  radiusRange.addEventListener("input", () => {
+    config.revealRadius = parseInt(radiusRange.value, 10);
+    setSliderFill(radiusRange);
   });
-});
-document.querySelectorAll('input[type="range"]').forEach((r) => {
-  setSliderFill(r);
-  r.addEventListener("input", () => setSliderFill(r));
-  r.addEventListener("change", () => setSliderFill(r));
+}
+
+if (pixelSizeRange) {
+  pixelSizeRange.value = config.pixelSize;
+  setSliderFill(pixelSizeRange);
+  pixelSizeRange.addEventListener("input", () => {
+    const v = parseInt(pixelSizeRange.value, 10);
+    setSliderFill(pixelSizeRange);
+    if (v === config.pixelSize) return;
+    config.pixelSize = v;
+    initPixels();
+  });
+}
+
+if (bgColorInput) {
+  if (/^#[0-9a-f]{6}$/i.test(config.bgColor)) bgColorInput.value = config.bgColor;
+  bgColorInput.addEventListener("input", () => {
+    config.bgColor = bgColorInput.value;
+    requestRender(true);
+  });
+}
+
+function selectPreset(btn) {
+  presetButtons.forEach((p) => p.classList.toggle("selected", p === btn));
+}
+
+function setImage(src, previewSrc) {
+  loadImage(src);
+  if (imagePreview) imagePreview.src = previewSrc || src;
+}
+
+function releaseObjectUrl() {
+  if (objectUrl) URL.revokeObjectURL(objectUrl);
+  objectUrl = null;
+}
+
+document.getElementById("presets")?.addEventListener("click", (e) => {
+  const btn = e.target.closest(".preset");
+  if (!btn?.dataset.src) return;
+  selectPreset(btn);
+  releaseObjectUrl();
+  setImage(btn.dataset.src, btn.querySelector("img")?.src);
 });
 
-// COLLAPSE
+imageInput?.addEventListener("change", () => {
+  const file = imageInput.files?.[0];
+  if (!file) return;
+  releaseObjectUrl();
+  objectUrl = URL.createObjectURL(file);
+  setImage(objectUrl);
+  selectPreset(null);
+  imageInput.value = "";
+});
+
+// Segmented controls (Mode, Shape)
+function bindSegmented(id, key, onChange) {
+  const group = document.getElementById(id);
+  if (!group) return () => {};
+  const buttons = group.querySelectorAll("button");
+  const select = (value) => {
+    settings[key] = value;
+    buttons.forEach((b) => b.setAttribute("aria-checked", String(b.dataset.value === value)));
+    onChange?.();
+  };
+  group.addEventListener("click", (e) => {
+    const btn = e.target.closest("button");
+    if (btn) select(btn.dataset.value);
+  });
+  return select;
+}
+const selectMode = bindSegmented("mode", "mode", () => {
+  canvas.style.cursor = settings.mode === "erase" ? "cell" : "";
+});
+const selectShape = bindSegmented("shape", "shape", () => requestRender(true));
+
+animateInput?.addEventListener("change", () => {
+  settings.animate = animateInput.checked;
+});
+
+function setFade(tenths) {
+  const wasOff = settings.fadeMs <= 0;
+  settings.fadeMs = tenths * 100;
+  if (fadeValue) fadeValue.textContent = tenths ? (tenths / 10).toFixed(1) + "s" : "Off";
+  if (fadeRange) setSliderFill(fadeRange);
+  if (settings.fadeMs <= 0) {
+    fadeQueue = [];
+    fadeHead = 0;
+  } else if (wasOff) {
+    enqueueRevealed(performance.now());
+  }
+  requestRender(false);
+}
+fadeRange?.addEventListener("input", () => setFade(parseInt(fadeRange.value, 10)));
+
+document.getElementById("clearBtn")?.addEventListener("click", () => revealAll(0));
+document.getElementById("fillBtn")?.addEventListener("click", () => revealAll(1));
+
+document.getElementById("saveBtn")?.addEventListener("click", () => {
+  canvas.toBlob((blob) => {
+    if (!blob) return;
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "reveal.png";
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  });
+});
+
+// Reset everything back to how the page loaded.
+resetBtn?.addEventListener("click", () => {
+  releaseObjectUrl();
+  Object.assign(config, { pixelSize: defaults.pixelSize, revealRadius: defaults.revealRadius, bgColor: defaults.bgColor });
+  if (radiusRange) radiusRange.value = config.revealRadius;
+  if (pixelSizeRange) pixelSizeRange.value = config.pixelSize;
+  if (bgColorInput) bgColorInput.value = config.bgColor;
+  if (fadeRange) fadeRange.value = 0;
+  if (animateInput) animateInput.checked = settings.animate = defaults.animate;
+  document.querySelectorAll('input[type="range"]').forEach(setSliderFill);
+  selectMode(defaults.mode);
+  selectShape(defaults.shape);
+  setFade(0);
+  selectPreset(presetButtons[0]);
+  setImage(originalImagePath, presetButtons[0]?.querySelector("img")?.src);
+});
+
+// COLLAPSE (animation is pure CSS, see .panel-body)
 const panelToggle = document.getElementById("panelToggle");
 const panelBody = document.getElementById("panelBody");
 
 if (panelToggle && panelBody) {
-  const originalDisplay = getComputedStyle(panelBody).display || "flex";
-
-  panelToggle.setAttribute("aria-expanded", "true");
-  panelBody.style.display = originalDisplay;
-  panelBody.style.height = "auto";
   panelBody.dataset.state = "open";
-
-  const reduceMotion = window.matchMedia(
-    "(prefers-reduced-motion: reduce)"
-  ).matches;
-  if (reduceMotion) panelBody.style.transition = "none";
-
-  function collapse(el) {
-    if (el.dataset.animating === "1" || el.dataset.state === "closed") return;
-    el.dataset.animating = "1";
-    const start = el.scrollHeight;
-    el.style.height = start + "px";
-    requestAnimationFrame(() => {
-      el.dataset.state = "closed";
-      el.style.height = "0px";
-    });
-    el.addEventListener("transitionend", function onEnd(e) {
-      if (e.propertyName !== "height") return;
-      el.style.display = "none";
-      el.dataset.animating = "0";
-      el.removeEventListener("transitionend", onEnd);
-    });
-  }
-
-  function expand(el) {
-    if (el.dataset.animating === "1" || el.dataset.state === "open") return;
-    el.dataset.animating = "1";
-
-    el.style.display = originalDisplay;
-    el.style.height = "auto";
-    const target = el.scrollHeight;
-
-    el.style.height = "0px";
-    void el.offsetHeight;
-    el.dataset.state = "open";
-    el.style.height = target + "px";
-
-    el.addEventListener("transitionend", function onEnd(e) {
-      if (e.propertyName !== "height") return;
-      el.style.height = "auto";
-      el.dataset.animating = "0";
-      el.removeEventListener("transitionend", onEnd);
-    });
-  }
-
   panelToggle.addEventListener("click", () => {
-    const expanded = panelToggle.getAttribute("aria-expanded") === "true";
-    panelToggle.setAttribute("aria-expanded", String(!expanded));
-    expanded ? collapse(panelBody) : expand(panelBody);
+    const open = panelBody.dataset.state !== "open";
+    panelBody.dataset.state = open ? "open" : "closed";
+    panelToggle.setAttribute("aria-expanded", String(open));
   });
 }

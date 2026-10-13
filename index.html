@@ -5,23 +5,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Reveal</title>
     <link rel="icon" type="image/png" href="./assets/reveal-logo.png" />
+    <link rel="preload" as="image" href="./assets/glow.jpg" />
     <link rel="stylesheet" href="style.css" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400..800;1,400..800&family=Fira+Mono:wght@400;500;700&family=IBM+Plex+Sans:ital,wght@0,100..700;1,100..700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500&display=swap"
       rel="stylesheet"
     />
   </head>
   <body>
     <div class="panel controls" id="controls">
-      <button class="panel-head" id="panelToggle" aria-expanded="true">
+      <button class="panel-head" id="panelToggle" type="button" aria-expanded="true" aria-controls="panelBody">
         <span>Settings</span>
         <svg
           class="chev"
           viewBox="0 0 24 24"
-          width="20"
-          height="20"
+          width="16"
+          height="16"
           aria-hidden="true"
         >
           <path
@@ -35,47 +36,83 @@
       </button>
 
       <div class="panel-body" id="panelBody">
-        <hr class="panel-divider" />
+        <div class="panel-inner">
+          <hr class="panel-divider" />
 
-        <div class="preset-row">
-          <label>Presets</label>
-          <div class="presets" id="presets">
-            <button class="preset selected" data-src="./assets/bg-4.jpg">
-              <img src="./assets/bg-4.jpg" alt="Preset 1" />
-            </button>
-            <button class="preset" data-src="./assets/bg-2.jpg">
-              <img src="./assets/bg-2.jpg" alt="Preset 2" />
-            </button>
-            <button class="preset" data-src="./assets/bg-9.jpg">
-              <img src="./assets/bg-9.jpg" alt="Preset 3" />
-            </button>
+          <div class="preset-row">
+            <label>Presets</label>
+            <div class="presets" id="presets">
+              <button class="preset selected" data-src="./assets/glow.jpg">
+                <img src="./assets/thumbs/glow.jpg" alt="Preset 1" />
+              </button>
+              <button class="preset" data-src="./assets/wave.jpg">
+                <img src="./assets/thumbs/wave.jpg" alt="Preset 2" />
+              </button>
+              <button class="preset" data-src="./assets/bg-9.jpg">
+                <img src="./assets/thumbs/bg-9.jpg" alt="Preset 3" />
+              </button>
+            </div>
+          </div>
+
+          <div class="field row height">
+            <label for="bgColor">Color</label>
+            <input id="bgColor" type="color" value="#ffffff" />
+          </div>
+
+          <div class="field row height">
+            <label for="imageInput">Image</label>
+            <label class="file-btn">
+              <input id="imageInput" type="file" accept="image/*" hidden />
+              <img id="imagePreview" src="./assets/thumbs/glow.jpg" alt="Preview" />
+            </label>
+          </div>
+
+          <div class="field height">
+            <label for="radius">Radius</label>
+            <input id="radius" type="range" min="10" max="200" step="1" />
+          </div>
+
+          <div class="field height">
+            <label for="pixelSize">Size</label>
+            <input id="pixelSize" type="range" min="2" max="60" step="1" />
+          </div>
+
+          <hr class="panel-divider" />
+
+          <div class="field height">
+            <label>Mode</label>
+            <div class="segmented" id="mode" role="radiogroup" aria-label="Mode">
+              <button type="button" role="radio" data-value="draw" aria-checked="true">Draw</button>
+              <button type="button" role="radio" data-value="hover" aria-checked="false">Hover</button>
+              <button type="button" role="radio" data-value="erase" aria-checked="false">Erase</button>
+            </div>
+          </div>
+
+          <div class="field height">
+            <label>Shape</label>
+            <div class="segmented" id="shape" role="radiogroup" aria-label="Shape">
+              <button type="button" role="radio" data-value="square" aria-checked="true">Square</button>
+              <button type="button" role="radio" data-value="dot" aria-checked="false">Dot</button>
+            </div>
+          </div>
+
+          <div class="field row height">
+            <label for="animate">Animate</label>
+            <input id="animate" class="switch" type="checkbox" role="switch" checked />
+          </div>
+
+          <div class="field height">
+            <label for="fade">Fade <span class="value" id="fadeValue">Off</span></label>
+            <input id="fade" type="range" min="0" max="50" step="1" value="0" />
+          </div>
+
+          <div class="actions">
+            <button class="action-btn" id="clearBtn" type="button">Clear</button>
+            <button class="action-btn" id="fillBtn" type="button">Reveal</button>
+            <button class="action-btn" id="saveBtn" type="button">Save</button>
+            <button class="action-btn" id="resetImage" type="button">Reset</button>
           </div>
         </div>
-
-        <div class="field row height">
-          <label for="bgColor">Color</label>
-          <input id="bgColor" type="color" value="#fffff" />
-        </div>
-
-        <div class="field row height">
-          <label for="imageInput">Image</label>
-          <label class="file-btn">
-            <input id="imageInput" type="file" accept="image/*" hidden />
-            <img id="imagePreview" src="./assets/bg-4.jpg" alt="Preview" />
-          </label>
-        </div>
-
-        <div class="field height">
-          <label for="radius">Radius</label>
-          <input id="radius" type="range" min="10" max="200" step="1" />
-        </div>
-
-        <div class="field height">
-          <label for="pixelSize">Size</label>
-          <input id="pixelSize" type="range" min="2" max="60" step="1" />
-        </div>
-
-        <button class="reset-btn" id="resetImage" type="button">Reset</button>
       </div>
     </div>
     <div class="container">
