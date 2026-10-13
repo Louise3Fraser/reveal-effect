@@ -21,8 +21,8 @@
         <svg
           class="chev"
           viewBox="0 0 24 24"
-          width="20"
-          height="20"
+          width="16"
+          height="16"
           aria-hidden="true"
         >
           <path
@@ -36,47 +36,49 @@
       </button>
 
       <div class="panel-body" id="panelBody">
-        <hr class="panel-divider" />
-
-        <div class="preset-row">
-          <label>Presets</label>
-          <div class="presets" id="presets">
-            <button class="preset selected" data-src="./assets/bg-4.jpg">
-              <img src="./assets/thumbs/bg-4.jpg" alt="Preset 1" />
-            </button>
-            <button class="preset" data-src="./assets/bg-2.jpg">
-              <img src="./assets/thumbs/bg-2.jpg" alt="Preset 2" />
-            </button>
-            <button class="preset" data-src="./assets/bg-9.jpg">
-              <img src="./assets/thumbs/bg-9.jpg" alt="Preset 3" />
-            </button>
+        <div class="panel-inner">
+          <hr class="panel-divider" />
+  
+          <div class="preset-row">
+            <label>Presets</label>
+            <div class="presets" id="presets">
+              <button class="preset selected" data-src="./assets/bg-4.jpg">
+                <img src="./assets/thumbs/bg-4.jpg" alt="Preset 1" />
+              </button>
+              <button class="preset" data-src="./assets/bg-2.jpg">
+                <img src="./assets/thumbs/bg-2.jpg" alt="Preset 2" />
+              </button>
+              <button class="preset" data-src="./assets/bg-9.jpg">
+                <img src="./assets/thumbs/bg-9.jpg" alt="Preset 3" />
+              </button>
+            </div>
           </div>
-        </div>
-
-        <div class="field row height">
-          <label for="bgColor">Color</label>
-          <input id="bgColor" type="color" value="#ffffff" />
-        </div>
-
-        <div class="field row height">
-          <label for="imageInput">Image</label>
-          <label class="file-btn">
-            <input id="imageInput" type="file" accept="image/*" hidden />
-            <img id="imagePreview" src="./assets/thumbs/bg-4.jpg" alt="Preview" />
-          </label>
-        </div>
-
-        <div class="field height">
-          <label for="radius">Radius</label>
-          <input id="radius" type="range" min="10" max="200" step="1" />
-        </div>
-
-        <div class="field height">
-          <label for="pixelSize">Size</label>
-          <input id="pixelSize" type="range" min="2" max="60" step="1" />
-        </div>
-
+  
+          <div class="field row height">
+            <label for="bgColor">Color</label>
+            <input id="bgColor" type="color" value="#ffffff" />
+          </div>
+  
+          <div class="field row height">
+            <label for="imageInput">Image</label>
+            <label class="file-btn">
+              <input id="imageInput" type="file" accept="image/*" hidden />
+              <img id="imagePreview" src="./assets/thumbs/bg-4.jpg" alt="Preview" />
+            </label>
+          </div>
+  
+          <div class="field height">
+            <label for="radius">Radius</label>
+            <input id="radius" type="range" min="10" max="200" step="1" />
+          </div>
+  
+          <div class="field height">
+            <label for="pixelSize">Size</label>
+            <input id="pixelSize" type="range" min="2" max="60" step="1" />
+          </div>
+  
         <button class="reset-btn" id="resetImage" type="button">Reset</button>
+        </div>
       </div>
     </div>
     <div class="container">

@@ -310,38 +310,15 @@ resetBtn?.addEventListener("click", () => {
   setImage(originalImagePath, presetButtons[0]?.querySelector("img")?.src);
 });
 
-// COLLAPSE
+// COLLAPSE (animation is pure CSS, see .panel-body)
 const panelToggle = document.getElementById("panelToggle");
 const panelBody = document.getElementById("panelBody");
 
 if (panelToggle && panelBody) {
-  let open = true;
-  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   panelBody.dataset.state = "open";
-
   panelToggle.addEventListener("click", () => {
-    open = !open;
-    panelToggle.setAttribute("aria-expanded", String(open));
-
-    // Animate from the current height, so clicks mid-animation reverse smoothly.
-    const from = panelBody.getBoundingClientRect().height;
-    panelBody.style.display = "";
-    panelBody.style.height = "auto";
-    const to = open ? panelBody.scrollHeight : 0;
-    panelBody.style.height = from + "px";
-    void panelBody.offsetHeight;
+    const open = panelBody.dataset.state !== "open";
     panelBody.dataset.state = open ? "open" : "closed";
-    panelBody.style.height = to + "px";
-    if (reduceMotion.matches) finishToggle();
-  });
-
-  function finishToggle() {
-    if (open) panelBody.style.height = "auto";
-    else panelBody.style.display = "none";
-  }
-
-  panelBody.addEventListener("transitionend", (e) => {
-    if (e.target !== panelBody || e.propertyName !== "height") return;
-    finishToggle();
+    panelToggle.setAttribute("aria-expanded", String(open));
   });
 }
