@@ -31,6 +31,8 @@ html {
   width: 100%;
   height: 100%;
   z-index: 10;
+  touch-action: none;
+  cursor: crosshair;
 }
 
 .white {
@@ -55,7 +57,6 @@ label {
   --shadow: 0 1.589px 0 0 rgba(255, 255, 255, 0.15) inset,
     0 0 0 1.589px rgba(27, 32, 35, 0.08), 0 0 0 1.589px rgba(27, 32, 35, 0.02),
     0 1.589px 4.767px -1.589px rgba(27, 32, 35, 0.2);
-  backdrop-filter: blur(16.28561782836914px);
 }
 
 .panel {
